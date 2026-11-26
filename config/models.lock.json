@@ -59,12 +59,12 @@
   },
   {
    "id": "acestep-v15-base",
-   "installer": "acestep",
+   "installer": "remiqora-part",
    "package": "acestep-v15-base",
-   "source": "hf (ACE-Step 1.5, via acestep-download)",
+   "source": "hf via Remiqora POST /api/engines/parts/acestep-v15-base/download (20 s on RunPod EU-SE-1, 2026-11-26)",
    "upstream_size_gb": 4.8,
    "license": "MIT",
-   "enabled": false,
+   "enabled": true,
    "phase": 2,
    "bytes": "unmeasured",
    "sha256": "unmeasured"

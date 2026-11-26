@@ -5,7 +5,8 @@ Works with n8n completely unavailable. Timeline (T = deadline, from env RMQ_DEAD
 /dev/shm/rmq/deadline.json written by the agent after an n8n reservation, capped by RMQ_MAX_DEADLINE):
   T - drain        mark drain (agent shows it; imports blocked)
   T - final        quiesce Remiqora, run final backup, verify
-  verified         terminate self (POST /v2/pods/{id}/action terminate with the pod-scoped RUNPOD_API_KEY)
+  verified         n8n terminates on its next tick; the guard terminates self after RMQ_TERMINATE_GRACE_MINUTES (15)
+                   if n8n has not (POST /v2/pods/{id}/action terminate with the pod-scoped RUNPOD_API_KEY)
   not verified     retry every 2 min until the hard deadline (T + grace)
   hard deadline    STOP self (volume disk keeps the only copy; GPU billing ends) — never terminate unbacked-up data
 If no user data exists (never bootstrapped / empty data dir) the pod is terminated at T.
@@ -186,9 +187,13 @@ def tick(st, t, test, hooks=None):
             res = None
             st["lastError"] = type(e).__name__
         if res and res.get("final"):
-            st.update({"finalBackupVerified": True, "lastCompleteGen": res.get("lastCompleteGen"), "phase": "final backup verified"})
-    # 4) verified -> terminate
-    if st["finalBackupVerified"] and t >= min(base, final_at + 60) and not st.get("terminateRequested"):
+            st.update({"finalBackupVerified": True, "verifiedAt": t, "lastCompleteGen": res.get("lastCompleteGen"), "phase": "final backup verified"})
+    # 4) verified -> terminate. n8n normally terminates first (it reads finalBackupVerified from /health and records the
+    # generation); the guard waits a grace of a few dispatcher ticks so an owner stop ends ARCHIVED, not "pod vanished".
+    # Still a backstop if n8n is down, and never later than one minute before the hard deadline.
+    grace = int(os.environ.get("RMQ_TERMINATE_GRACE_MINUTES", "15")) * 60
+    term_at = min(max(min(base, final_at + 60), st.get("verifiedAt", 0) + grace), hard - 60)
+    if st["finalBackupVerified"] and t >= term_at and not st.get("terminateRequested"):
         st["terminateRequested"] = bool(_action("terminate"))
         st["phase"] = "terminate requested" if st["terminateRequested"] else "terminate FAILED (n8n watchdog will retry)"
     return st
@@ -200,7 +205,7 @@ def main():
     st = {"armedAt": iso(now()), "phase": "armed", "finalBackupVerified": False, "attempts": 0, "test": test}
     if prev.get("armedAt") and prev.get("deadlineEnv") == os.environ.get("RMQ_DEADLINE"):
         st.update({k: prev[k] for k in ("armedAt", "phase", "finalBackupVerified", "attempts", "lastAttempt", "stopRequested",
-                                        "terminateRequested", "lastCompleteGen") if k in prev})  # survive guard restarts
+                                        "terminateRequested", "lastCompleteGen", "verifiedAt") if k in prev})  # survive guard restarts
     st["deadlineEnv"] = os.environ.get("RMQ_DEADLINE")
     write_status(st)
     log("armed", deadline=os.environ.get("RMQ_DEADLINE"), test=test, resumed=bool(prev.get("armedAt")))

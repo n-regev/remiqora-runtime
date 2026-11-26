@@ -84,6 +84,7 @@ def bootstrap_worker():
         weights.ensure(os.path.join(os.path.dirname(os.path.abspath(__file__)), "models.lock.json"))
         set_phase("starting_app")
         start_remiqora()
+        weights.request_parts(os.path.join(os.path.dirname(os.path.abspath(__file__)), "models.lock.json"), common.REMIQORA_URL)
         set_phase("ready", readyAt=common.now_iso())
         threading.Thread(target=periodic_backups, daemon=True).start()
     except Exception as e:

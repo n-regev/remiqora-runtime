@@ -5,6 +5,8 @@ Weights live on the container disk (wiped with the pod; re-downloaded each COLD 
 Uses the upstream tools so file layout matches what Remiqora expects:
   * audio.cpp:  python3 tools/model_manager_v2.py install <pkg>        (YuE2 q8 + VAE, SheetSage2, MuScriptor)
   * ACE-Step:   uv run --with hf_xet acestep-download --model <name>    (Turbo; Base in Phase 2)
+  * remiqora-part: requested from the running app (request_parts) — Remiqora downloads it in the background
+    (ACE-Step Base for the editor's "Add a part")
 After download, sizes and sha256 are recorded to /workspace/.rmq/models.observed.json for models.lock.json.
 """
 import json
@@ -61,6 +63,20 @@ def ensure(lock_path):
         common.log("weights", "installed", model=m["id"], seconds=secs)
     common.atomic_write_json(os.path.join(common.WORK, "models.observed.json"), observed, 0o644)
     return observed
+
+
+def request_parts(lock_path, base_url):
+    """Ask the running Remiqora to download optional parts (non-fatal; the app downloads in the background)."""
+    import urllib.request
+    for m in json.load(open(lock_path))["models"]:
+        if m.get("installer") != "remiqora-part" or not m.get("enabled", True):
+            continue
+        try:
+            req = urllib.request.Request("%s/api/engines/parts/%s/download" % (base_url, m["package"]), data=b"", method="POST")
+            with urllib.request.urlopen(req, timeout=60) as r:
+                common.log("weights", "part download requested", model=m["id"], status=r.status)
+        except Exception as e:
+            common.log("weights", "part download request failed (install it from the editor)", model=m["id"], err=str(e)[:200])
 
 
 if __name__ == "__main__":
