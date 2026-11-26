@@ -1,0 +1,72 @@
+name: build-image
+# Builds the Remiqora runtime image WITHOUT pushing (R9). Uploads review artifacts:
+# SBOM, file listing, image history, license inventory, private-string/secret scan.
+# Publishing to public GHCR is a separate, owner-approved step (publish job, manual input).
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Push to ghcr.io (only if the automated private-string/secret scan is empty)"
+        type: boolean
+        default: false
+defaults:
+  run:
+    shell: bash   # implies -eo pipefail (a failed docker build must fail the step)
+permissions:
+  contents: read
+  packages: write
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - name: Free disk space on the runner
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          sudo docker image prune -af
+          df -h /
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build (no push)
+        run: |
+          docker build -f docker/Dockerfile --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" -t remiqora-runtime:ci . 2>&1 | tee build.log | tail -n 200
+          docker image inspect remiqora-runtime:ci --format '{{.Id}} {{.Size}}' | tee image-id.txt
+      - name: Review artifacts (R9)
+        run: |
+          mkdir -p review
+          docker history --no-trunc remiqora-runtime:ci > review/history.txt
+          docker run --rm --entrypoint bash remiqora-runtime:ci -c '
+            cat /opt/remiqora/.pinned-commit;
+            find / -xdev -type f -size +20M -printf "%s %p\n" 2>/dev/null | sort -rn | head -100;
+            du -sh /opt/remiqora/external/* /opt/node /opt/uv-python 2>/dev/null; true' > review/files.txt
+          docker run --rm --entrypoint bash remiqora-runtime:ci -c '
+            dpkg-query -W -f="\${Package}\t\${Version}\n" ;
+            echo ---pip-backend; /opt/remiqora/backend/.venv/bin/pip list --format=freeze;
+            for d in /opt/remiqora/external/*/.venv; do echo ---venv $d; $d/bin/python -m pip list --format=freeze 2>/dev/null || ls $d/lib/python*/site-packages | head -200; done
+            echo ---licenses; ls /opt/remiqora/LICENSE* /opt/remiqora/external/*/LICENSE* 2>/dev/null; true' > review/licenses.txt
+          # private-string / secret scan of the whole filesystem (must be empty)
+          docker run --rm --entrypoint bash remiqora-runtime:ci -c '
+            grep -rIlE "regev\.eu|noamregev|cfat_|rpa_[A-Za-z0-9]{20}|github_pat_|BEGIN (RSA|OPENSSH) PRIVATE KEY|client_secret\"\s*:" \
+              /opt/rmq /opt/remiqora --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=.git 2>/dev/null || true' > review/private-strings.txt
+          wc -l review/private-strings.txt
+          cp build.log image-id.txt review/
+      - uses: anchore/sbom-action@v0
+        with:
+          image: remiqora-runtime:ci
+          format: spdx-json
+          output-file: review/sbom.spdx.json
+          upload-artifact: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-review
+          path: review/
+          retention-days: 30
+      - name: Publish (owner-approved; gated on an empty private-string/secret scan)
+        if: ${{ inputs.publish }}
+        run: |
+          test ! -s review/private-strings.txt || { echo "private strings found - refusing to publish"; cat review/private-strings.txt; exit 1; }
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          TAG=ghcr.io/${{ github.repository_owner }}/remiqora-runtime:${{ github.sha }}
+          docker tag remiqora-runtime:ci "$TAG" && docker push "$TAG"
+          docker tag remiqora-runtime:ci "ghcr.io/${{ github.repository_owner }}/remiqora-runtime:latest-build" && docker push "ghcr.io/${{ github.repository_owner }}/remiqora-runtime:latest-build"
+          docker inspect --format '{{index .RepoDigests 0}}' "$TAG"
