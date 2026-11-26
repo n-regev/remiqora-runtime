@@ -44,10 +44,11 @@ jobs:
             echo ---pip-backend; /opt/remiqora/backend/.venv/bin/pip list --format=freeze;
             for d in /opt/remiqora/external/*/.venv; do echo ---venv $d; $d/bin/python -m pip list --format=freeze 2>/dev/null || ls $d/lib/python*/site-packages | head -200; done
             echo ---licenses; ls /opt/remiqora/LICENSE* /opt/remiqora/external/*/LICENSE* 2>/dev/null; true' > review/licenses.txt
-          # private-string / secret scan of the whole filesystem (must be empty)
+          # private-string / secret scan (must be empty) - owner-approved split 2026-11-26: strict on OUR code; upstream
+          # trees checked only for artefacts that could only come from us (upstream ships test keys + author e-mails).
           docker run --rm --entrypoint bash remiqora-runtime:ci -c '
-            grep -rIlE "[A-Za-z0-9._%+-]+@gmail\.com|cfargotunnel\.com|cloudflareaccess\.com|cfat_[A-Za-z0-9]{20}|rpa_[A-Za-z0-9]{20}|github_pat_|BEGIN (RSA|OPENSSH) PRIVATE KEY|client_secret\"\s*:" \
-              /opt/rmq /opt/remiqora --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=.git 2>/dev/null || true' > review/private-strings.txt
+            grep -rIlE "[A-Za-z0-9._%+-]+@gmail\.com|cfargotunnel\.com|cloudflareaccess\.com|cfat_[A-Za-z0-9]{20}|rpa_[A-Za-z0-9]{20}|github_pat_|BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|client_secret\"\s*:" /opt/rmq 2>/dev/null;
+            grep -rIlE "cfat_[A-Za-z0-9]{20}|rpa_[A-Za-z0-9]{20}|github_pat_[A-Za-z0-9_]{20}|[a-f0-9]{8}-[a-f0-9-]{27}\.cfargotunnel\.com|cloudflareaccess\.com" /opt/remiqora --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=.git 2>/dev/null; true' > review/private-strings.txt
           wc -l review/private-strings.txt
           cp build.log image-id.txt review/
       - uses: anchore/sbom-action@v0
