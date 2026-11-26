@@ -133,7 +133,7 @@ def quiesce_remiqora():
 
 
 def final_backup():
-    here = os.path.dirname(os.path.abspath(__file__))
+    here = os.path.dirname(os.path.abspath(globals().get("__file__", "/opt/rmq/guard.py")))
     p = subprocess.run([sys.executable, "-I", os.path.join(here, "backup.py"), "backup", "--final"], capture_output=True, timeout=45 * 60)
     if p.returncode == 0:
         try:
@@ -144,48 +144,76 @@ def final_backup():
     return None
 
 
+def tick(st, t, test, hooks=None):
+    """One guard decision step. Order is safety-first: the hard-deadline STOP is evaluated before any backup attempt,
+    and any exception in quiesce/backup counts as a failed attempt instead of killing the guard (R1 fix, 2026-11-26)."""
+    h = hooks or {}
+    _action = h.get("pod_action", pod_action)
+    _has_data = h.get("has_user_data", has_user_data)
+    _quiesce = h.get("quiesce", quiesce_remiqora)
+    _backup = h.get("final_backup", final_backup)
+    base, hard, final_at, drain_at = h.get("deadlines", deadlines)()
+    st.update({"deadline": iso(base), "hardDeadline": iso(hard), "finalBackupAt": iso(final_at)})
+    data = _has_data()
+    # 1) hard deadline first: unverified backup + user data -> STOP (volume kept). Never terminate here.
+    if not st["finalBackupVerified"] and t >= hard and data and not test:
+        if not st.get("stopRequested"):
+            st["phase"] = "hard deadline: stopping (volume kept)"
+            st["stopRequested"] = bool(_action("stop"))
+        return st
+    if t >= drain_at and st["phase"] == "armed":
+        st["phase"] = "draining"
+        try:
+            open(os.path.join(RUN, "drain-by-guard"), "w").close()
+        except OSError:
+            pass
+    # 2) no user data (never bootstrapped / test): terminate at the deadline
+    if t >= base and (test or not data) and not st["finalBackupVerified"] and not st.get("terminateRequested"):
+        st["phase"] = "terminating (no user data)"
+        st["terminateRequested"] = bool(_action("terminate"))
+        if not st["terminateRequested"]:
+            st["selfTerminateFailed"] = True
+        return st
+    # 3) final backup attempts (every 2 min) between final_at and the hard deadline
+    if t >= final_at and data and not test and not st["finalBackupVerified"] and t - st.get("lastAttempt", 0) >= 120:
+        st["lastAttempt"] = t
+        st["attempts"] = st.get("attempts", 0) + 1
+        st["phase"] = "final backup"
+        try:
+            _quiesce()
+            res = _backup()
+        except Exception as e:  # never let a backup failure kill the guard
+            res = None
+            st["lastError"] = type(e).__name__
+        if res and res.get("final"):
+            st.update({"finalBackupVerified": True, "lastCompleteGen": res.get("lastCompleteGen"), "phase": "final backup verified"})
+    # 4) verified -> terminate
+    if st["finalBackupVerified"] and t >= min(base, final_at + 60) and not st.get("terminateRequested"):
+        st["terminateRequested"] = bool(_action("terminate"))
+        st["phase"] = "terminate requested" if st["terminateRequested"] else "terminate FAILED (n8n watchdog will retry)"
+    return st
+
+
 def main():
     test = os.environ.get("RMQ_GUARD_TEST") == "1"
+    prev = read_json(STATUS, {}) or {}
     st = {"armedAt": iso(now()), "phase": "armed", "finalBackupVerified": False, "attempts": 0, "test": test}
+    if prev.get("armedAt") and prev.get("deadlineEnv") == os.environ.get("RMQ_DEADLINE"):
+        st.update({k: prev[k] for k in ("armedAt", "phase", "finalBackupVerified", "attempts", "lastAttempt", "stopRequested",
+                                        "terminateRequested", "lastCompleteGen") if k in prev})  # survive guard restarts
+    st["deadlineEnv"] = os.environ.get("RMQ_DEADLINE")
     write_status(st)
-    log("armed", deadline=os.environ.get("RMQ_DEADLINE"), test=test)
-    last_attempt = 0
+    log("armed", deadline=os.environ.get("RMQ_DEADLINE"), test=test, resumed=bool(prev.get("armedAt")))
     while True:
-        base, hard, final_at, drain_at = deadlines()
-        t = now()
-        st.update({"deadline": iso(base), "hardDeadline": iso(hard), "finalBackupAt": iso(final_at)})
-        if t >= drain_at and st["phase"] == "armed":
-            st["phase"] = "draining"
-            open(os.path.join(RUN, "drain-by-guard"), "w").close()
-            log("drain window reached")
-        if t >= final_at and not st["finalBackupVerified"]:
-            if test or not has_user_data():
-                if t >= base:
-                    st["phase"] = "terminating (no user data)"
-                    write_status(st)
-                    if pod_action("terminate"):
-                        st["phase"] = "terminate requested"
-                        write_status(st)
-                        time.sleep(600)  # provider will kill us
-                    else:
-                        st["selfTerminateFailed"] = True
-            elif t - last_attempt >= 120:
-                last_attempt = t
-                st["attempts"] += 1
-                st["phase"] = "final backup"
-                write_status(st)
-                quiesce_remiqora()
-                res = final_backup()
-                if res and res.get("final"):
-                    st.update({"finalBackupVerified": True, "lastCompleteGen": res["lastCompleteGen"], "phase": "final backup verified"})
-                    log("final backup verified", gen=res["lastCompleteGen"])
-        if st["finalBackupVerified"] and t >= min(base, final_at + 60) and not st.get("terminateRequested"):
-            st["terminateRequested"] = pod_action("terminate")
-            st["phase"] = "terminate requested" if st["terminateRequested"] else "terminate FAILED (n8n watchdog will retry)"
-        if not st["finalBackupVerified"] and t >= hard and has_user_data() and not st.get("stopRequested") and not test:
-            st["phase"] = "hard deadline: stopping (volume kept)"
-            st["stopRequested"] = pod_action("stop")
-        write_status(st)
+        try:
+            tick(st, now(), test)
+        except Exception as e:  # last-resort: keep the loop alive; the next tick re-evaluates the hard deadline first
+            st["lastError"] = type(e).__name__
+            log("tick error", err=type(e).__name__)
+        try:
+            write_status(st)
+        except OSError:
+            pass
         time.sleep(POLL_S)
 
 
