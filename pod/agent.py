@@ -231,7 +231,10 @@ class Handler(BaseHTTPRequestHandler):
             allow += [h for h in body.get("allowHosts", []) if isinstance(h, str)]
 
             def run_job():
-                res = pipeline.run({"jobId": job_id, "source": body.get("source", {})}, allow)
+                try:
+                    res = pipeline.run({"jobId": job_id, "source": body.get("source", {})}, allow)
+                except Exception as e:  # never leave a job stuck in "running"
+                    res = {"ok": False, "error": "INTERNAL", "detail": type(e).__name__ + ": " + str(e)[:200]}
                 with LOCK:
                     JOBS[job_id].update({"status": "done" if res.get("ok") else "failed", "result": res, "finishedAt": common.now_iso()})
             threading.Thread(target=run_job, daemon=True).start()

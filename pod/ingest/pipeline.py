@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import common  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SCRATCH_ROOT = os.environ.get("RMQ_SCRATCH", "/workspace/.rmq-scratch")
+SCRATCH_ROOT = os.environ.get("RMQ_SCRATCH", "/tmp/rmq-scratch")  # container disk: the /workspace volume refuses chown (2026-11-26)
 LIBRARY = common.REMOTE + "source-library"
 MAX_DURATION_S = int(os.environ.get("RMQ_INGEST_MAX_DURATION_S", "900"))
 MAX_OUT_BYTES = 250 * 1024 * 1024
@@ -108,8 +108,11 @@ def run(job, allow_hosts):
     job_id = re.sub(r"[^A-Za-z0-9_-]", "", str(job["jobId"]))[:64]
     scratch = os.path.join(SCRATCH_ROOT, job_id)
     shutil.rmtree(scratch, ignore_errors=True)
-    os.makedirs(scratch, mode=0o770)
-    shutil.chown(scratch, user="root", group="rmqingest")
+    os.makedirs(scratch, mode=0o770, exist_ok=True)
+    try:
+        shutil.chown(scratch, user="root", group="rmqingest")
+    except (PermissionError, LookupError, OSError):
+        os.chmod(scratch, 0o777)  # filesystem without chown support: still isolated per job, removed afterwards
     raw = os.path.join(scratch, "input.bin")
     src = job["source"]
     try:
@@ -123,8 +126,7 @@ def run(job, allow_hosts):
             drive_id = re.sub(r"[^A-Za-z0-9_-]", "", src["driveId"])
             common.rclone(["backend", "copyid", "rmq:", drive_id, raw + ".dl"], timeout=900)
             os.replace(raw + ".dl", raw)
-            os.chmod(raw, 0o640)
-            shutil.chown(raw, group="rmqingest")
+            os.chmod(raw, 0o644)
             if os.path.getsize(raw) > 100 * 1024 * 1024:
                 raise IngestError("TOO_LARGE", "Drive file over cap")
         else:
