@@ -46,7 +46,7 @@ jobs:
             echo ---licenses; ls /opt/remiqora/LICENSE* /opt/remiqora/external/*/LICENSE* 2>/dev/null; true' > review/licenses.txt
           # private-string / secret scan of the whole filesystem (must be empty)
           docker run --rm --entrypoint bash remiqora-runtime:ci -c '
-            grep -rIlE "regev\.eu|noamregev|cfat_|rpa_[A-Za-z0-9]{20}|github_pat_|BEGIN (RSA|OPENSSH) PRIVATE KEY|client_secret\"\s*:" \
+            grep -rIlE "[A-Za-z0-9._%+-]+@gmail\.com|cfargotunnel\.com|cloudflareaccess\.com|cfat_[A-Za-z0-9]{20}|rpa_[A-Za-z0-9]{20}|github_pat_|BEGIN (RSA|OPENSSH) PRIVATE KEY|client_secret\"\s*:" \
               /opt/rmq /opt/remiqora --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=.git 2>/dev/null || true' > review/private-strings.txt
           wc -l review/private-strings.txt
           cp build.log image-id.txt review/
