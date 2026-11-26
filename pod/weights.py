@@ -48,7 +48,12 @@ def ensure(lock_path):
             secs = _run([sys.executable, "tools/model_manager_v2.py", "install", m["package"]], AUDIOCPP)
             path = os.path.join(AUDIOCPP, "models")
         elif m["installer"] == "acestep":
-            secs = _run(["uv", "run", "--with", "hf_xet", "acestep-download", "--model", m["package"]], ACE)
+            # Non-fatal: upstream ACE-Step downloads its checkpoints by itself on first generation (setup_linux.sh:381).
+            try:
+                secs = _run(["uv", "run", "--with", "hf_xet", "acestep-download", "--model", m["package"]], ACE)
+            except Exception as e:
+                common.log("weights", "ACE-Step pre-download skipped (downloads lazily on first use)", err=str(e)[:200])
+                continue
             path = os.path.join(ACE, "checkpoints")
         else:
             continue

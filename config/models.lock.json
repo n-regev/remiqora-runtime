@@ -1,15 +1,81 @@
 {
-  "_comment": "Weights are NOT in the image. Installed at session start by pod/weights.py via the upstream installers. bytes/sha256 are filled from /workspace/.rmq/models.observed.json after the first POC run (R3); until then they are 'unmeasured'. Licenses per upstream README.md:405-416 at remiqora 7061167.",
-  "remiqora_commit": "7061167ba5f119d0720ca11a632fca74d17d1b67",
-  "audiocpp_ref": "39f9013",
-  "acestep_ref": "ca1e85f",
-  "models": [
-    {"id": "yue2-main-q8_0", "installer": "audiocpp", "package": "yue2_main_q8_0", "source": "hf:audio-cpp/Yue2-3B-GGUF", "upstream_size_gb": 4.26, "license": "CC BY-NC 4.0", "vram_gb": 9, "enabled": true, "bytes": "unmeasured", "sha256": "unmeasured"},
-    {"id": "yue2-vae-f16", "installer": "audiocpp", "package": "yue2_vae_f16", "source": "hf:audio-cpp/Yue2-3B-GGUF", "license": "CC BY-NC 4.0", "enabled": true, "bytes": "unmeasured", "sha256": "unmeasured"},
-    {"id": "sheetsage2-orig", "installer": "audiocpp", "package": "sheetsage2_orig", "source": "hf:audio-cpp/SheetSage2-GGUF", "license": "CC BY-NC 4.0", "enabled": true, "bytes": "unmeasured", "sha256": "unmeasured"},
-    {"id": "muscriptor-small-f32", "installer": "audiocpp", "package": "muscriptor_small_f32", "source": "hf:audio-cpp/audio.cpp-gguf", "license": "CC BY-NC 4.0", "enabled": true, "bytes": "unmeasured", "sha256": "unmeasured"},
-    {"id": "acestep-v15-turbo", "installer": "acestep", "package": "acestep-v15-turbo", "source": "hf (ACE-Step 1.5, via acestep-download)", "license": "MIT", "enabled": true, "bytes": "unmeasured", "sha256": "unmeasured"},
-    {"id": "acestep-v15-base", "installer": "acestep", "package": "acestep-v15-base", "source": "hf (ACE-Step 1.5, via acestep-download)", "upstream_size_gb": 4.8, "license": "MIT", "enabled": false, "phase": 2, "bytes": "unmeasured", "sha256": "unmeasured"},
-    {"id": "yue2-main-q4_0", "installer": "audiocpp", "package": "yue2_main_q4_0", "license": "CC BY-NC 4.0", "enabled": false, "note": "excluded: q8 selected (spec §5)"}
-  ]
+ "_comment": "Weights are NOT in the image. Installed at session start by pod/weights.py via the upstream installers. bytes/sha256 are filled from /workspace/.rmq/models.observed.json after the first POC run (R3); until then they are 'unmeasured'. Licenses per upstream README.md:405-416 at remiqora 7061167.",
+ "remiqora_commit": "7061167ba5f119d0720ca11a632fca74d17d1b67",
+ "audiocpp_ref": "39f9013",
+ "acestep_ref": "ca1e85f",
+ "models": [
+  {
+   "id": "yue2-main-q8_0",
+   "installer": "audiocpp",
+   "package": "yue2_main_q8_0",
+   "source": "hf:audio-cpp/Yue2-3B-GGUF",
+   "upstream_size_gb": 4.26,
+   "license": "CC BY-NC 4.0",
+   "vram_gb": 9,
+   "enabled": true,
+   "bytes": "unmeasured",
+   "sha256": "unmeasured"
+  },
+  {
+   "id": "yue2-vae-f16",
+   "installer": "audiocpp",
+   "package": "yue2_vae_f16",
+   "source": "hf:audio-cpp/Yue2-3B-GGUF",
+   "license": "CC BY-NC 4.0",
+   "enabled": true,
+   "bytes": "unmeasured",
+   "sha256": "unmeasured"
+  },
+  {
+   "id": "sheetsage2-orig",
+   "installer": "audiocpp",
+   "package": "sheetsage2_orig",
+   "source": "hf:audio-cpp/SheetSage2-GGUF",
+   "license": "CC BY-NC 4.0",
+   "enabled": true,
+   "bytes": "unmeasured",
+   "sha256": "unmeasured"
+  },
+  {
+   "id": "muscriptor-small-f32",
+   "installer": "audiocpp",
+   "package": "muscriptor_small_f32",
+   "source": "hf:audio-cpp/audio.cpp-gguf",
+   "license": "CC BY-NC 4.0",
+   "enabled": true,
+   "bytes": "unmeasured",
+   "sha256": "unmeasured"
+  },
+  {
+   "id": "acestep-v15-turbo",
+   "installer": "acestep",
+   "package": "acestep-v15-turbo",
+   "source": "hf (ACE-Step 1.5, via acestep-download)",
+   "license": "MIT",
+   "enabled": false,
+   "bytes": "unmeasured",
+   "sha256": "unmeasured",
+   "note": "downloaded lazily by ACE-Step on first generation (pre-download command failed on 2026-11-26)"
+  },
+  {
+   "id": "acestep-v15-base",
+   "installer": "acestep",
+   "package": "acestep-v15-base",
+   "source": "hf (ACE-Step 1.5, via acestep-download)",
+   "upstream_size_gb": 4.8,
+   "license": "MIT",
+   "enabled": false,
+   "phase": 2,
+   "bytes": "unmeasured",
+   "sha256": "unmeasured"
+  },
+  {
+   "id": "yue2-main-q4_0",
+   "installer": "audiocpp",
+   "package": "yue2_main_q4_0",
+   "license": "CC BY-NC 4.0",
+   "enabled": false,
+   "note": "excluded: q8 selected (spec \u00a75)"
+  }
+ ]
 }
